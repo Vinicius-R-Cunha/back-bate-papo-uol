@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient, ObjectId } from 'mongodb';
+import { MongoClient } from 'mongodb';
 import joi from 'joi';
 import dotenv from 'dotenv';
 import dayjs from 'dayjs';
@@ -28,28 +28,29 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+setInterval(handleInactive, 15000);
+
 app.post('/participants', async (req, res) => {
     try {
-        const participant = req.body;
-        const validation = participantsSchema.validate(participant, { abortEarly: false });
+        const name = req.body.name;
+        const validation = participantsSchema.validate(req.body, { abortEarly: false });
 
         if (validation.error) {
             res.status(422).send(validation.error.details.map(error => error.message));
             return;
         }
 
-        const standardizedName = { name: firstLettersToUpperCase(participant.name) };
-        const alreadyTaken = await db.collection('participants').findOne({ name: standardizedName.name });
+        const formatedName = firstLettersToUpperCase(name);
+        const alreadyTaken = await db.collection('participants').findOne({ formatedName: formatedName });
 
         if (alreadyTaken) {
             res.sendStatus(409);
             return;
         }
 
-        await db.collection('participants').insertOne({ ...standardizedName, lastStatus: Date.now() });
-
+        await db.collection('participants').insertOne({ name, lastStatus: Date.now(), formatedName });
         await db.collection('messages').insertOne({
-            from: standardizedName.name,
+            from: name,
             to: "Todos",
             text: "entra na sala...",
             type: "status",
@@ -62,12 +63,11 @@ app.post('/participants', async (req, res) => {
 });
 
 function firstLettersToUpperCase(str) {
-    // const arr = str.split(" ");
-    // for (var i = 0; i < arr.length; i++) {
-    //     arr[i] = arr[i].charAt(0).toUpperCase() + arr[i].slice(1).toLowerCase();
-    // }
-    // return arr.join(" ");
-    return str;
+    const arr = str.split(" ");
+    for (var i = 0; i < arr.length; i++) {
+        arr[i] = arr[i].charAt(0).toUpperCase() + arr[i].slice(1).toLowerCase();
+    }
+    return arr.join(" ");
 }
 
 app.get('/participants', async (req, res) => {
@@ -81,7 +81,7 @@ app.get('/participants', async (req, res) => {
 
 app.post('/messages', async (req, res) => {
     try {
-        const user = firstLettersToUpperCase(req.header('User'));
+        const user = (req.header('User'));
         const validation = messagesSchema.validate(req.body, { abortEarly: false });
         const userExists = await db.collection('participants').findOne({ name: user });
 
@@ -108,10 +108,10 @@ function formatTime(dayjs) {
 
 app.get('/messages', async (req, res) => {
     try {
-        const user = firstLettersToUpperCase(req.header('User'));
+        const user = (req.header('User'));
         const limit = req.query.limit;
         const messages = await db.collection('messages').find().toArray();
-        const filteredMessages = messages.filter(msg => (msg.from === user || msg.to === user || msg.type === 'message' || msg.type === 'status'));
+        const filteredMessages = messages.filter(msg => (msg.from === user || msg.to === user || msg.type !== 'private_message'));
 
         if (!limit) {
             res.status(201).send(filteredMessages);
@@ -125,7 +125,7 @@ app.get('/messages', async (req, res) => {
 
 app.post('/status', async (req, res) => {
     try {
-        const user = firstLettersToUpperCase(req.header('User'));
+        const user = (req.header('User'));
         const userExists = await db.collection('participants').findOne({ name: user });
 
         if (!userExists) {
@@ -142,5 +142,14 @@ app.post('/status', async (req, res) => {
         res.status(500).send(error);
     }
 });
+
+async function handleInactive() {
+    const participants = await db.collection('participants').find({}).toArray();
+    for (let i = 0; i < participants.length; i++) {
+        if (Date.now() - participants[i].lastStatus > 10000) {
+            await db.collection('participants').deleteOne({ _id: participants[i]._id });
+        }
+    }
+}
 
 app.listen(5000);
