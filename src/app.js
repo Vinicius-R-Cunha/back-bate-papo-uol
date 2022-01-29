@@ -147,6 +147,13 @@ async function handleInactive() {
     const participants = await db.collection('participants').find({}).toArray();
     for (let i = 0; i < participants.length; i++) {
         if (Date.now() - participants[i].lastStatus > 10000) {
+            await db.collection('messages').insertOne({
+                from: participants[i].name,
+                to: "Todos",
+                text: "sai da sala...",
+                type: "status",
+                time: formatTime(dayjs())
+            });
             await db.collection('participants').deleteOne({ _id: participants[i]._id });
         }
     }
