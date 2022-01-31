@@ -125,11 +125,10 @@ app.post('/status', async (req, res) => {
             res.sendStatus(404);
         }
 
-        await db.collection('participants').updateOne({
-            _id: userExists._id,
-        }, {
-            $set: { ...userExists, lastStatus: Date.now() }
-        });
+        await db.collection('participants').updateOne({ _id: userExists._id, },
+            {
+                $set: { ...userExists, lastStatus: Date.now() }
+            });
         res.sendStatus(200);
     } catch (error) {
         res.status(500).send(error);
@@ -175,6 +174,41 @@ app.delete('/messages/:id', async (req, res) => {
         }
 
         await db.collection('messages').deleteOne({ _id: id });
+        res.sendStatus(201);
+    } catch (error) {
+        res.status(500).send(error);
+    }
+});
+
+app.put('/messages/:id', async (req, res) => {
+    try {
+        const user = stripHtml(req.header('User')).result.trim();
+        const id = new ObjectId(req.params.id);
+        const trimmedText = { ...req.body, text: stripHtml(req.body.text).result.trim() };
+        const validation = messagesSchema.validate(req.body, { abortEarly: false });
+        const userExists = await db.collection('participants').findOne({ name: user });
+        const message = await db.collection('messages').findOne({ _id: id });
+
+        if (!message) {
+            res.sendStatus(404);
+            return;
+        }
+
+        if (validation.error || !userExists) {
+            res.status(422).send(validation.error.details.map(error => error.message));
+            return;
+        }
+
+        if (user !== message.from) {
+            res.sendStatus(401);
+            return;
+        }
+
+        await db.collection('messages').updateOne({ _id: id, },
+            {
+                $set: { from: user, ...trimmedText, time: formatTime(dayjs()) }
+            });
+
         res.sendStatus(201);
     } catch (error) {
         res.status(500).send(error);
