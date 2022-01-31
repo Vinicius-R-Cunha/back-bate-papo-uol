@@ -40,15 +40,14 @@ app.post('/participants', async (req, res) => {
             return;
         }
 
-        const formatedName = firstLettersToUpperCase(name);
-        const alreadyTaken = await db.collection('participants').findOne({ formatedName: formatedName });
+        const alreadyTaken = await db.collection('participants').find({ name: name }).collation({ locale: 'pt', strength: 2 }).toArray();
 
-        if (alreadyTaken) {
+        if (alreadyTaken.length !== 0) {
             res.sendStatus(409);
             return;
         }
 
-        await db.collection('participants').insertOne({ name, lastStatus: Date.now(), formatedName });
+        await db.collection('participants').insertOne({ name, lastStatus: Date.now() });
         await db.collection('messages').insertOne({
             from: name,
             to: "Todos",
@@ -61,14 +60,6 @@ app.post('/participants', async (req, res) => {
         res.status(500).send(error);
     }
 });
-
-function firstLettersToUpperCase(str) {
-    const arr = str.split(" ");
-    for (var i = 0; i < arr.length; i++) {
-        arr[i] = arr[i].charAt(0).toUpperCase() + arr[i].slice(1).toLowerCase();
-    }
-    return arr.join(" ");
-}
 
 app.get('/participants', async (req, res) => {
     try {
