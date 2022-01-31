@@ -4,6 +4,7 @@ import { MongoClient } from 'mongodb';
 import joi from 'joi';
 import dotenv from 'dotenv';
 import dayjs from 'dayjs';
+import { stripHtml } from "string-strip-html";
 
 dotenv.config();
 
@@ -32,7 +33,7 @@ setInterval(handleInactive, 15000);
 
 app.post('/participants', async (req, res) => {
     try {
-        const name = req.body.name;
+        const name = stripHtml(req.body.name).result.trim();
         const validation = participantsSchema.validate(req.body, { abortEarly: false });
 
         if (validation.error) {
@@ -72,7 +73,8 @@ app.get('/participants', async (req, res) => {
 
 app.post('/messages', async (req, res) => {
     try {
-        const user = (req.header('User'));
+        const user = stripHtml(req.header('User')).result.trim();
+        const trimmedText = { ...req.body, text: stripHtml(req.body.text).result.trim() };
         const validation = messagesSchema.validate(req.body, { abortEarly: false });
         const userExists = await db.collection('participants').findOne({ name: user });
 
@@ -81,7 +83,7 @@ app.post('/messages', async (req, res) => {
             return;
         }
 
-        const message = { from: user, ...req.body, time: formatTime(dayjs()) };
+        const message = { from: user, ...trimmedText, time: formatTime(dayjs()) };
         await db.collection('messages').insertOne(message);
 
         res.sendStatus(201);
@@ -99,7 +101,7 @@ function formatTime(dayjs) {
 
 app.get('/messages', async (req, res) => {
     try {
-        const user = (req.header('User'));
+        const user = stripHtml(req.header('User')).result.trim();;
         const limit = req.query.limit;
         const messages = await db.collection('messages').find().toArray();
         const filteredMessages = messages.filter(msg => (msg.from === user || msg.to === user || msg.type !== 'private_message'));
@@ -116,7 +118,7 @@ app.get('/messages', async (req, res) => {
 
 app.post('/status', async (req, res) => {
     try {
-        const user = (req.header('User'));
+        const user = stripHtml(req.header('User')).result.trim();;
         const userExists = await db.collection('participants').findOne({ name: user });
 
         if (!userExists) {
