@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
 import joi from 'joi';
 import dotenv from 'dotenv';
 import dayjs from 'dayjs';
@@ -136,20 +136,49 @@ app.post('/status', async (req, res) => {
     }
 });
 
-async function handleInactive() {
-    const participants = await db.collection('participants').find({}).toArray();
-    for (let i = 0; i < participants.length; i++) {
-        if (Date.now() - participants[i].lastStatus > 10000) {
-            await db.collection('messages').insertOne({
-                from: participants[i].name,
-                to: "Todos",
-                text: "sai da sala...",
-                type: "status",
-                time: formatTime(dayjs())
-            });
-            await db.collection('participants').deleteOne({ _id: participants[i]._id });
+async function handleInactive(req, res) {
+    try {
+        const participants = await db.collection('participants').find({}).toArray();
+        if (participants.length !== 0) {
+            for (let i = 0; i < participants.length; i++) {
+                if (Date.now() - participants[i].lastStatus > 10000) {
+                    await db.collection('messages').insertOne({
+                        from: participants[i].name,
+                        to: "Todos",
+                        text: "sai da sala...",
+                        type: "status",
+                        time: formatTime(dayjs())
+                    });
+                    await db.collection('participants').deleteOne({ _id: participants[i]._id });
+                }
+            }
         }
+    } catch {
+        res.status(500).send(error);
     }
 }
+
+app.delete('/messages/:id', async (req, res) => {
+    try {
+        const user = stripHtml(req.header('User')).result.trim();
+        const id = new ObjectId(req.params.id);
+        const message = await db.collection('messages').findOne({ _id: id });
+
+        if (!message) {
+            res.sendStatus(404);
+            return;
+        }
+
+        if (user !== message.from) {
+            res.sendStatus(401);
+            return;
+        }
+
+        await db.collection('messages').deleteOne({ _id: id });
+        res.sendStatus(201);
+    } catch (error) {
+        res.status(500).send(error);
+    }
+});
 
 app.listen(5000);
